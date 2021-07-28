@@ -1,0 +1,47 @@
+//should data paths reference the final path or the root path?
+object entity @e[type=armor_stand] Raycaster {
+	data entity @s ArmorItems[0].tag compound root;
+	data entity @s &this.root->origin Origin origin;
+
+	score entity @s dummy distance = 0;
+	score entity @s dummy max;
+	score entity @s dummy stepSize;
+
+	//constructors will instead replace every @s that would be created with the entity or block that is being created
+	//they will do this not by replacing the occurences, but by using the execute command
+	//this can be optimized by only using the execute command when needed
+	//a runner variable might be created to actually use an @s in this situation
+	Raycaster(data Origin origin, score dummy stepSize, score dummy max, data compound Rotation) {
+		this.max = max;
+		this.stepSize = stepSize;
+		this.data.Rotation = Rotation;
+
+		this.data.Tags.append("raycast");
+		this.origin = origin;
+	}
+
+	void summon() {
+		super.summon()
+		this.data.Tags.append("raycast");
+	}
+
+	//stepSize is represented in 16ths of a block
+	//scores are used as in and out
+	void raycast() {
+		for(int i = 0; i < 16; i++) {
+			this.distance += 1;
+
+			if(this.distance > this.max) distanceOver();
+
+			if(i % this.stepSize == 0) {
+				score general hit = execute.positioned(^ ^ ^i*0.0625).run(this.check());
+				if(hit > 0) hitObject();
+			}
+		}	
+	}
+
+	abstract void distanceOver();
+	abstract void hitObject();
+
+	abstract score general check();
+}

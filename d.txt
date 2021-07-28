@@ -1,0 +1,161 @@
+object entity type armor_stand selector @e[tag=raycast.raycaster] Raycaster extends RaycastPart {
+	data compound root = entity @s ArmorItems[0].tag;
+
+	score dummy distance = @s distance, 0;
+	score dummy max = @s max;
+	score dummy stepSize = @s stepSize;
+
+    data UUID source = @s &root^player;
+    data String callback = @s &root^callback;
+
+	constructor(score stepSize, score max, data UUID source, data String callback) {
+		this.max = max;
+		this.stepSize = stepSize;
+
+        this.source = source;
+		this.data.Rotation = source.data.Rotation;
+
+		//quotations can be optional in builtin variable types like entity selectors, positions, and nbt
+		entity.tag.add(this, "raycast.raycaster");
+
+        return this;
+	}
+
+	//objects only need one summon as everything else will be handled in the constructors
+	//this could also technically be optional if someone only wants casts
+	summon(Position pos) {
+		//nbt will be a standard format
+		//as well as positions(~ ~ ~, ^ ^ ^)
+		//identifiers, however, cannot be added as they can conflict with variables
+		return (Raycaster) entity.summon("armor_stand", pos, {Tags:["raycast.raycaster"]});
+	}
+
+	//stepSize is represented in 16ths of a block
+	//scores are used as in and out
+	void raycast() {
+		for(int i = 0; i < 16; i++) {
+			this.distance += 1;
+
+			if(this.distance > this.max) distanceOver();
+
+			if(i % this.stepSize == 0) {
+                // possibly add a general score for things with no set path
+                // but that not only might be confusing but also might include abiguity in the syntax
+                // but ambiguity already exists when setting a variable to a value
+                // kinda want to remove the ambiguity but could it not just choose with data paths?
+				score dummy hit = hit oraycast, execute.positioned(^ ^ ^i*0.0625).run(this.check());
+				if(hit > 0) hitObject();
+			}
+		}	
+	}
+
+    void instanceTick() {
+        raycast();
+    }
+
+    static void staticTick() {
+        execute.as(@e[tag=raycast.success.source]).run(addAge());
+    }
+
+	abstract void distanceOver();
+	abstract void hitObject();
+
+	abstract score dummy check();
+}
+	
+object entity @e[type=armor_stand,tag=raycast.raycaster] GoalRaycaster extends Raycaster {
+	// idk about this syntax
+    // an alternative to -> could just be ^
+
+	entity Goal goal = entity @s &this.root->goal;
+
+    // so functions need inputs
+    // how will the function know where those inputs are coming from
+	GoalRaycaster init(score dummy max, score dummy stepSize, entity Goal goal, entity Entity source, data String callback) {
+		super(max, stepSize, source, callback);
+		this.goal = goal;
+	}
+
+	score general check() {
+		tag.add(goal, "currentGoal");
+        score dummy result = entity.check(@e[tag=currentGoal,distance=..1]));
+        tag.remove(goal, "currentGoal");
+		return result;
+	}	
+
+	void distanceOver() {
+		this.kill();
+	}
+
+    void hitObject() {
+        tag.add(this.goal, "raycast.success.goal");
+        tag.add(this, "raycast.success.raycaster");
+        tag.add(this.source, "raycast.success.source");
+        sys.schedule(this.callback);
+    }
+
+    void kill() {
+        goal.raycasterDeath();
+		super.kill();
+    }
+}
+
+object entity @e[type=armor_stand,tag=raycast.Goal] Goal extends RaycastPart {
+	data compound root = entity @s ArmorItems[0].tag;
+    // change syntax to score dummy raycasters = @s raycasters = 0?
+    score dummy raycasters = @s raycasters, 0;
+    data String callback = root^callback;
+
+	Goal init(int maxLength = [1,6,10,20], score dummy stepSize, data String callback) {
+		// this is why i have it as curly bracket
+        tag.add(@s, "currentGoal");
+
+        // the static variables could be used like this by adding a bunch
+        // of execute ifs, the accepted inputs set by the array of values
+		execute.as(@a[distance=..maxLength]).at(@s).run(() -> {
+            entity Goal goal = Goal.getNearest(@e[tag=currentGoal]);
+            ((GoalRaycaster) GoalRaycaster.summon()).init(maxLength, stepSize, goal, this, callback);
+            goal.onRaycasterSpawn();
+        });
+
+        tag.remove(@s, "currentGoal");
+	}
+
+
+
+    Entity summon(Position pos) {
+        entity.summon("armor_stand", pos, {Tags:["raycast.Goal"]});
+        return this;
+    }
+
+    static void startRaycast(int maxLength = [1,6], score dummy stepSize, data String callback) {
+        ((Goal) Goal.summon()).init(maxLength, stepSize, callback);
+    }
+
+    void raycasterDeath() {
+        this.raycasters--;
+    }
+
+    void onRaycasterSpawn() {
+        this.raycasters++;
+    }
+
+    static Goal getNearest(Selector sel) {
+        return (Goal)super.getNearest(sel);
+    }
+}
+
+object entity @e RaycastPart {
+    score dummy age = @s age, 0;
+
+    static void staticTick() {
+        Goal.getAll(@e[tag=raycast.success.goal]).addAge();
+        RaycastPart.getAll(@e[tag=raycast.success.source]).addAge();
+        Raycaster.getAll(@e[tag=raycast.success.raycaster]).addAge();
+    }
+
+    void addAge() {
+        age++;
+        if(age > 1) kill();
+    }
+}

@@ -1,0 +1,148 @@
+//maybe add some entity stack in the game which holds a list of the uuids of all the entities that have run it
+
+//there needs to be some difference between world objects and theoretical objects
+object general Object {
+	abstract data data;
+	abstract object self;
+
+	abstract void kill();
+	abstract void summon(position pos);
+}
+
+//superclass of all entities
+object entity @e Entity {
+	data entity @s . compound data;
+
+	void kill() {
+		sys.run($kill @s$);
+	}
+}
+
+
+//should data paths reference the final path or the root path?
+object entity type armor_stand @e[tag=thatestf.raycast] Raycaster {
+	data entity @s ArmorItems[0].tag compound root;
+	data entity @s &this.root->origin Origin origin;
+
+	score entity @s dummy distance = 0;
+	score entity @s dummy max;
+	score entity @s dummy stepSize;
+
+	//constructors will instead replace every @s that would be created with the entity or block that is being created
+	//they will do this not by replacing the occurences, but by using the execute command
+	//this can be optimized by only using the execute command when needed
+	//a runner variable will then need to be created to actually use an @s in this situation
+	Raycaster(data Origin origin, score dummy stepSize, score dummy max, data compound Rotation) {
+		//all objects must be summoned in constructors
+		//this only does not apply in casting
+		this.max = max;
+		this.stepSize = stepSize;
+		this.data.Rotation = Rotation;
+		this.origin = origin;
+		//$$s can be optional in builtin variable types like entity selectors, positions, and nbt
+		entity.tag.add(@s, "thatestf.raycast");
+	}
+
+	//objects only need one summon as everything else will be handled in the constructors
+	//this could also technically be optional if someone only wants casts
+	summon(position pos) {
+		//nbt will be a standard format
+		//as well as positions(~ ~ ~, ^ ^ ^)
+		//identifiers, however, cannot be added as they can conflict with variables
+		entity.summon($armor_stand$, pos, {Tags:["thatestf.raycast"]});
+	}
+
+	//stepSize is represented in 16ths of a block
+	//scores are used as in and out
+	void raycast() {
+		for(int i = 0; i < 16; i++) {
+			this.distance += 1;
+
+			if(this.distance > this.max) distanceOver();
+
+			if(i % this.stepSize == 0) {
+				score general hit = execute.positioned(^ ^ ^i*0.0625).run(this.check());
+				if(hit > 0) hitObject();
+			}
+		}	
+	}
+
+	abstract void distanceOver();
+	abstract void hitObject();
+
+	abstract score general check();
+}
+	
+object entity @e[type=armor_stand] GoalRaycaster extends Raycaster {
+	//idk about this syntax
+	data entity @s &this.root->goal Goal goal;
+
+	OriginRaycaster(score dummy max, score dummy stepSize, data Goal goal) {
+		super(max, stepSize);
+		this.goal = goal;
+	}
+
+	score general check() {
+		tag.add(origin, "currentOrigin");
+		return entity.check(@e[tag=currentOrigin,distance=..1]));
+	}	
+
+	void distanceOver {
+		origin.raycasterDeath();
+		this.kill();
+	}	
+}
+object entity @e[type=armor_stand] Goal {
+	data entity @s ArmorItems[0].tag compound root;
+
+	Goal(score dummy maxLength, score dummy stepSize) {
+		//this is why i have it as curly bracket
+		execute.as(@a[distance=..maxLength]).at(@s).run(() -> {})
+	}
+}
+
+	
+
+need to add some command modifier functions
+the entity library maybe could be included in this/
+
+if you add java-like paths (com.mojang.minecraft.nbt etc) then they could be viewed as the paths in functions (thatepicbanana.place.command etc to thatepicbanana:place/command)
+ - import thatepicbanana:general/uuid/getuuid
+ - copy everything from python including the init stuff
+
+find a way to include normal mcfunction files in these modules
+
+blocks will be interesting
+two types of blocks
+ - aoe cloud ones
+	- these will be used with an area of effect cloud marking their position and acting as the runner entity
+	- they can be used by any module, including ones outside of it's own
+ - set ones
+	- these will be marked by a set of cooridnates set on compile automatically or set by the user
+	- these can only be used in it's own module since you would have to compile other modules 
+	alongside it's own for it to work
+
+consumer.toCommand() will return either a function with the consumer's commands 
+in it or just a single command, think of it as an if statement or while loop.
+
+maybe make variable syntax more of a mov command in the zachtronics games
+ex: data distance = &root^distance, 10
+the compiler can also just use a singular address if it doesn't want to initialize the value
+ex: data x = pos.x
+you could also even take this further by giving adresses more of a syntax like this:
+entity @s root.distance
+with entity @s being optional optionally
+this could make it so variables could instance different things over time such as in a loop iterating over multiple entities
+why do we need variables that change their source? this could lead to ambiguity as to which it is in the future
+yea but this doesn't mean that the syntax for starting a function couldn't be like that
+also, it could just be restricted to variables that are not stored in objects
+
+use comments in compiled mcfunction files to denote functions
+
+$root^distance - >@e[type=armor_stand]<
+$root->distance - ^@e[type=armor_stand]^ - $@e[type=armor_stand]$ - |@e[type=armor_stand]| - ~@e[type=armor_stand]~
+
+or could just replace everything with strings and switch it to stuff like system.eval("command")
+would this not already happen when interfacing with command blocks? why not just make it easier
+
+some ofunction libraries could be written in java for speed and to use minecraft lists
